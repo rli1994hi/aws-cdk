@@ -38,6 +38,16 @@ export interface ITaskDefinition extends IResource {
    * Return true if the task definition can be run on a Fargate cluster
    */
   readonly isFargateCompatible: boolean;
+
+  /**
+   * The networking mode to use for the containers in the task.
+   */
+  readonly networkMode?: NetworkMode;
+
+  /**
+   * The name of the IAM role that grants containers in the task permission to call AWS APIs on your behalf.
+   */
+  readonly taskRole?: iam.IRole;
 }
 
 /**
@@ -175,6 +185,45 @@ export interface TaskDefinitionProps extends CommonTaskDefinitionProps {
   readonly pidMode?: PidMode;
 }
 
+/**
+ *  An reference to a external task definition
+ */
+export interface TaskDefinitionAttributes {
+  /**
+   * The arn of the task definition
+   */
+  readonly taskDefinitionArn: string;
+
+  /**
+   * Execution role for this task definition
+   *
+   * @default: undefined
+   */
+  readonly executionRole?: iam.IRole;
+
+  /**
+   * What launch types this task definition should be compatible with.
+   *
+   * @default Compatibility.EC2_AND_FARGATE
+   */
+  readonly compatibility?: Compatibility;
+
+  /**
+   * The networking mode to use for the containers in the task.
+   *
+   * @default NetworkMode.BRIDGE
+   */
+  readonly networkMode?: NetworkMode;
+
+
+  /**
+   * The name of the IAM role that grants containers in the task permission to call AWS APIs on your behalf.
+   *
+   * @default A task role is automatically created.
+   */
+  readonly taskRole?: iam.IRole;
+}
+
 abstract class TaskDefinitionBase extends Resource implements ITaskDefinition {
 
   public abstract readonly compatibility: Compatibility;
@@ -217,6 +266,23 @@ export class TaskDefinition extends TaskDefinitionBase {
   }
 
   /**
+   * Create a task definition from a task definition reference
+   */
+  public static fromTaskDefinitionAttributes(scope: Construct, id: string, attrs: TaskDefinitionAttributes): ITaskDefinition {
+    class Import extends TaskDefinitionBase {
+      public readonly taskDefinitionArn = attrs.taskDefinitionArn;
+      public readonly networkMode = attrs.networkMode || NetworkMode.BRIDGE;
+      public readonly compatibility = attrs.compatibility || Compatibility.EC2_AND_FARGATE;
+      public readonly executionRole = attrs.executionRole
+      public readonly taskRole = attrs.taskRole || new iam.Role(this, 'TaskRole', {
+        assumedBy: new iam.ServicePrincipal('ecs-tasks.amazonaws.com'),
+      });
+    }
+
+    return new Import(scope, id);
+  }
+
+  /**
    * The name of a family that this task definition is registered to.
    * A family groups multiple versions of a task definition.
    */
@@ -231,12 +297,12 @@ export class TaskDefinition extends TaskDefinitionBase {
   /**
    * The name of the IAM role that grants containers in the task permission to call AWS APIs on your behalf.
    */
-  public readonly taskRole: iam.IRole;
+  public readonly taskRole?: iam.IRole;
 
   /**
    * The networking mode to use for the containers in the task.
    */
-  public readonly networkMode: NetworkMode;
+  public readonly networkMode?: NetworkMode;
 
   /**
    * Default container for this task
@@ -248,7 +314,7 @@ export class TaskDefinition extends TaskDefinitionBase {
   public defaultContainer?: ContainerDefinition;
 
   /**
-   * The task launch type compatiblity requirement.
+   * The task launch type compatibility requirement.
    */
   public readonly compatibility: Compatibility;
 
@@ -406,6 +472,9 @@ export class TaskDefinition extends TaskDefinitionBase {
    * Adds a policy statement to the task IAM role.
    */
   public addToTaskRolePolicy(statement: iam.PolicyStatement) {
+    if (this.taskRole == undefined) {
+      throw new Error('Cannot add task role policy to a task definition when its task role is undefined');
+    }
     this.taskRole.addToPolicy(statement);
   }
 

@@ -3,6 +3,7 @@ import * as ecs from '@aws-cdk/aws-ecs';
 import * as events from '@aws-cdk/aws-events';
 import * as iam from '@aws-cdk/aws-iam';
 import * as cdk from '@aws-cdk/core';
+import { Construct } from 'constructs';
 import { ContainerOverride } from './ecs-task-properties';
 import { singletonEventRole } from './util';
 
@@ -18,7 +19,7 @@ export interface EcsTaskProps {
   /**
    * Task Definition of the task that should be started
    */
-  readonly taskDefinition: ecs.TaskDefinition;
+  readonly taskDefinition: ecs.ITaskDefinition;
 
   /**
    * How many tasks should be started when this event is triggered
@@ -103,7 +104,7 @@ export class EcsTask implements events.IRuleTarget {
    */
   public readonly securityGroups?: ec2.ISecurityGroup[];
   private readonly cluster: ecs.ICluster;
-  private readonly taskDefinition: ecs.TaskDefinition;
+  private readonly taskDefinition: ecs.ITaskDefinition;
   private readonly taskCount: number;
   private readonly role: iam.IRole;
   private readonly platformVersion?: ecs.FargatePlatformVersion;
@@ -111,6 +112,9 @@ export class EcsTask implements events.IRuleTarget {
   constructor(private readonly props: EcsTaskProps) {
     if (props.securityGroup !== undefined && props.securityGroups !== undefined) {
       throw new Error('Only one of SecurityGroup or SecurityGroups can be populated.');
+    }
+    if (props.taskDefinition.networkMode == undefined) {
+      throw new Error('Cannot create EcsTask without networkMode being defined in taskDefinition');
     }
 
     this.cluster = props.cluster;
@@ -137,8 +141,9 @@ export class EcsTask implements events.IRuleTarget {
       this.securityGroups = props.securityGroups;
       return;
     }
+
     let securityGroup = props.securityGroup || this.taskDefinition.node.tryFindChild('SecurityGroup') as ec2.ISecurityGroup;
-    securityGroup = securityGroup || new ec2.SecurityGroup(this.taskDefinition, 'SecurityGroup', { vpc: this.props.cluster.vpc });
+    securityGroup = securityGroup || new ec2.SecurityGroup(this.taskDefinition as unknown as Construct, 'SecurityGroup', { vpc: this.props.cluster.vpc });
     this.securityGroup = securityGroup; // Maintain backwards-compatibility for customers that read the generated security group.
     this.securityGroups = [securityGroup];
   }
@@ -205,6 +210,10 @@ export class EcsTask implements events.IRuleTarget {
 
     // For Fargate task we need permission to pass the task role.
     if (this.taskDefinition.isFargateCompatible) {
+      if (this.taskDefinition.taskRole == undefined) {
+        throw new Error('Cannot create a ecs task without its taskRole being defined in its taskDefinition');
+      }
+
       policyStatements.push(new iam.PolicyStatement({
         actions: ['iam:PassRole'],
         resources: [this.taskDefinition.taskRole.roleArn],

@@ -1,3 +1,4 @@
+import { notEqual } from 'assert';
 import * as path from 'path';
 import { expect, haveResource, haveResourceLike } from '@aws-cdk/assert';
 import { Protocol } from '@aws-cdk/aws-ec2';
@@ -967,9 +968,12 @@ export = {
         memoryLimitMiB: 512,
       });
 
+      notEqual(taskDefinition.taskRole, undefined);
+
       // THEN
       expect(stack).to(haveResourceLike('AWS::ECS::TaskDefinition', {
-        TaskRoleArn: stack.resolve(taskDefinition.taskRole.roleArn),
+
+        TaskRoleArn: stack.resolve(taskDefinition.taskRole?.roleArn),
       }));
 
       test.done();
@@ -980,9 +984,11 @@ export = {
       const stack = new cdk.Stack();
       const taskDefinition = new ecs.Ec2TaskDefinition(stack, 'Ec2TaskDef');
 
+      notEqual(taskDefinition.taskRole, undefined);
+
       // THEN
       expect(stack).to(haveResourceLike('AWS::ECS::TaskDefinition', {
-        TaskRoleArn: stack.resolve(taskDefinition.taskRole.roleArn),
+        TaskRoleArn: stack.resolve(taskDefinition.taskRole?.roleArn),
       }));
 
       test.done();
